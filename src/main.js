@@ -40,12 +40,16 @@ let busy = false;
 let painted = "";
 
 function signature(vm           )         {
-  return JSON.stringify([vm.screen, vm.status, vm.message, vm.workout?.id ?? null, vm.workout?.rev ?? null, busy]);
+  return JSON.stringify([vm.screen, vm.status, vm.message, vm.workout?.id ?? null, vm.workout?.rev ?? null, vm.selectedHistoryFile, vm.history.map((note) => [note.file, note.mtimeMs]), busy]);
 }
 
 function paint()       {
   const vm = controller.state();
-  render(root, vm, { standalone, busy, onSaveKey, onNewDay, onResultInput, onResultDone });
+  render(root, vm, { standalone, busy, onSaveKey, onNewDay, onResultInput, onResultDone,
+    onOpenHistory: () => { controller.openHistory(); paint(); },
+    onOpenHistoryNote: (file) => { controller.openHistoryNote(file); paint(); },
+    onBackHistory: () => { controller.backHistory(); paint(); },
+  });
   painted = signature(vm);
 }
 

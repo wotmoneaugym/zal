@@ -1,7 +1,7 @@
 // Service worker: keeps the app usable offline (design §9, §16).
 // Cache-first for this site's own files only; requests to other origins (api.github.com) are never touched.
 // build.ts (Task 16) fills in the two placeholders below: the build stamp and the list of app shell files.
-const CACHE_VERSION = "20261011T203522Z";
+const CACHE_VERSION = "20261011T210509Z";
 const CACHE_PREFIX = "workout-app-";
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
 const PRECACHE = ["./","core/dates.js","core/merge.js","core/parse-note.js","core/parse-result.js","core/plan-reader.js","core/previous.js","core/render-note.js","core/state.js","core/validate.js","core/workout.js","icons/icon-180.png","icons/icon-192.png","icons/icon-512.png","index.html","manifest.webmanifest","src/controller.js","src/github.js","src/main.js","src/sender.js","src/storage.js","src/view.js","styles.css"];

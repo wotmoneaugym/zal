@@ -12,6 +12,9 @@ import { MAX_FIELD } from "../core/validate.js";
                    
                                                     
                                                                               
+                        
+                                        
+                        
  
 
                                                                                
@@ -45,6 +48,7 @@ export function render(root             , vm           , handlers              )
 
 function screenKey(vm           , standalone         )         {
   if (vm.screen === "key") return standalone ? "key" : "install";
+  if (vm.screen === "history") return `history:${vm.selectedHistoryFile ?? "list"}:${vm.history.map((note) => `${note.file}:${note.mtimeMs}`).join("|")}`;
   return vm.workout === null ? "main:-" : `main:${vm.workout.id}:${vm.workout.exercises.length}`;
 }
 
@@ -67,7 +71,7 @@ function mount(root             , vm           , key        , handlers          
   };
   view.message.setAttribute("role", "status");
   view.status.setAttribute("aria-live", "polite");
-  const sheet = key === "install" ? installSheet(doc, view) : key === "key" ? keySheet(doc, view) : mainSheet(doc, vm, view);
+  const sheet = key === "install" ? installSheet(doc, view) : key === "key" ? keySheet(doc, view) : vm.screen === "history" ? historySheet(doc, vm, view) : mainSheet(doc, vm, view);
   root.replaceChildren(sheet, view.status);
   return view;
 }
@@ -80,13 +84,18 @@ function button(doc          , view         , className        , idle        , b
 }
 
 function mainSheet(doc          , vm           , view         )              {
-  const sheet = el(doc, "main", "sheet");
+  const sheet = el(doc, "main", vm.workout === null ? "sheet sheet-empty" : "sheet");
+  const header = el(doc, "header", "topbar");
+  const history = button(doc, view, "button history-open", "История", "История");
+  history.setAttribute("aria-label", "История тренировок");
+  history.addEventListener("click", () => view.handlers.onOpenHistory());
+  header.append(history);
+  sheet.append(header);
   const workout = vm.workout;
-  if (workout === null) {
-    sheet.append(el(doc, "p", "empty", "Сегодня тренировки ещё нет."));
-  } else {
-    sheet.append(el(doc, "h1", "note-title", `${workout.weekday} \u2014 ${workout.date}`));
-    for (const exercise of workout.exercises) sheet.append(exerciseBlock(doc, exercise, view));
+  const content = el(doc, "div", workout === null ? "empty-content" : "workout-content");
+  if (workout !== null) {
+    content.append(el(doc, "h1", "note-title", `${workout.weekday} \u2014 ${workout.date}`));
+    for (const exercise of workout.exercises) content.append(exerciseBlock(doc, exercise, view));
   }
   const actions = el(doc, "div", "actions");
   const newDay = button(doc, view, workout === null ? "button button-primary" : "button button-quiet", "Новый день", "Новый день…");
@@ -94,7 +103,35 @@ function mainSheet(doc          , vm           , view         )              {
     if (!view.handlers.busy) view.handlers.onNewDay();
   });
   actions.append(newDay, view.message);
-  sheet.append(actions);
+  content.append(actions);
+  if (workout === null) content.append(el(doc, "p", "empty", "Сегодня тренировки ещё нет."));
+  sheet.append(content);
+  return sheet;
+}
+
+function historySheet(doc          , vm           , view         )              {
+  const sheet = el(doc, "main", "sheet history-sheet");
+  const back = button(doc, view, "button history-back", "Назад", "Назад");
+  back.addEventListener("click", () => view.handlers.onBackHistory());
+  sheet.append(back);
+  const selected = vm.history.find((note) => note.file === vm.selectedHistoryFile);
+  if (selected !== undefined) {
+    sheet.append(el(doc, "h1", "note-title", selected.file.replace(/\.md$/u, "")));
+    sheet.append(el(doc, "pre", "history-text", selected.text));
+    return sheet;
+  }
+  sheet.append(el(doc, "h1", "note-title", "История тренировок"));
+  if (vm.history.length === 0) {
+    sheet.append(el(doc, "p", "empty", "Пока нет прошлых тренировок."));
+  } else {
+    const list = el(doc, "div", "history-list");
+    for (const note of vm.history) {
+      const item = button(doc, view, "button history-item", note.file.replace(/\.md$/u, ""), note.file.replace(/\.md$/u, ""));
+      item.addEventListener("click", () => view.handlers.onOpenHistoryNote(note.file));
+      list.append(item);
+    }
+    sheet.append(list);
+  }
   return sheet;
 }
 

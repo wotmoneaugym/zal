@@ -1,7 +1,7 @@
 // Logic of the phone app without the DOM: key, «Новый день», results, sending, status line, recovery.
 // Browser module: no node:* imports. The screen (view.ts) only draws state() and forwards events.
 import { addDays, localDateString } from "../core/dates.js";
-import { candidatesFor, deliveryLabel, existingDates,            } from "../core/state.js";
+import { candidatesFor, deliveryLabel, existingDates,                            } from "../core/state.js";
 import { validateField, validateWorkout } from "../core/validate.js";
 import { newDay as planNewDay, withResult,                                  } from "../core/workout.js";
 import { createGitHubClient, GitHubError,                   } from "./github.js";
@@ -14,10 +14,13 @@ import { createSender } from "./sender.js";
                                                                                                                                                                     
                                                                                       
                                                                                                                                      
+                      
+                                      
+                      
                                                         
  
 
-                                                                                                                      
+                                                                                                                                                                                            
 
 const SAVED = "сохранено в телефоне";
 const SENT = "отправлено";
@@ -89,6 +92,8 @@ export function createController(deps                                           
   let sendTimer          = null;
   let syncTimer          = null;
   let refreshing                       = null;
+  let historyOpen = false;
+  let selectedHistoryFile                = null;
 
   const persist = ()       => {
     storageFailed = !deps.storage.save(data);
@@ -348,14 +353,24 @@ export function createController(deps                                           
   return {
     state()            {
       const w = current();
-      const screen = data.token === null || keyRejected ? "key" : "main";
+      const screen = data.token === null || keyRejected ? "key" : historyOpen ? "history" : "main";
+      const history = [...(data.state?.notes ?? [])].sort((a, b) => b.date.localeCompare(a.date) || b.file.localeCompare(a.file));
+      const selected = history.some((note) => note.file === selectedHistoryFile) ? selectedHistoryFile : null;
       // A message about the user's own action wins; otherwise the main screen tells which phone values were not applied.
-      return { screen, workout: w, status: statusFor(w), message: message ?? (screen === "main" ? droppedPhoneValues(w) : null) };
+      return { screen, workout: w, status: statusFor(w), message: message ?? (screen === "main" ? droppedPhoneValues(w) : null), history, selectedHistoryFile: selected };
     },
     setToken,
     refresh,
     newDay,
     setResult,
+    openHistory: () => { historyOpen = true; selectedHistoryFile = null; },
+    openHistoryNote: (file) => {
+      if (historyOpen && data.state?.notes.some((note) => note.file === file)) selectedHistoryFile = file;
+    },
+    backHistory: () => {
+      if (selectedHistoryFile !== null) selectedHistoryFile = null;
+      else historyOpen = false;
+    },
     onVisible: syncSoon,
     onOnline: syncSoon,
     onHidden: sendNow,
