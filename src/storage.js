@@ -51,9 +51,13 @@ function sanitize(raw         )                                      {
   if (!isRecord(raw)) return { data, lossy: true };
   let lossy = false;
   if (typeof raw.token === "string" && raw.token !== "") data.token = raw.token;
+  else if (raw.token !== undefined && raw.token !== null) lossy = true;
   if (typeof raw.owner === "string") data.owner = raw.owner;
+  else if (raw.owner !== undefined) lossy = true;
   if (typeof raw.repo === "string" && raw.repo !== "") data.repo = raw.repo;
+  else if (raw.repo !== undefined) lossy = true;
   if (typeof raw.apiBase === "string" && raw.apiBase !== "") data.apiBase = raw.apiBase;
+  else if (raw.apiBase !== undefined) lossy = true;
   if (Array.isArray(raw.workouts)) {
     data.workouts = raw.workouts.filter(isWorkoutLike);
     lossy = data.workouts.length !== raw.workouts.length;
@@ -61,12 +65,17 @@ function sanitize(raw         )                                      {
     lossy = true;
   }
   if (isRecord(raw.state) && raw.state.schema === 1) data.state = raw.state                    ;
+  else if (raw.state !== undefined && raw.state !== null) lossy = true;
   if (typeof raw.stateFetchedAt === "string") data.stateFetchedAt = raw.stateFetchedAt;
+  else if (raw.stateFetchedAt !== undefined && raw.stateFetchedAt !== null) lossy = true;
   if (isRecord(raw.lastSentRev)) {
     // fromEntries creates own data properties, so ids like "__proto__" stay plain keys.
     data.lastSentRev = Object.fromEntries(
       Object.entries(raw.lastSentRev).filter(([, rev]) => typeof rev === "number" && Number.isInteger(rev) && rev >= 0),
     )                          ;
+    if (Object.keys(data.lastSentRev).length !== Object.keys(raw.lastSentRev).length) lossy = true;
+  } else if (raw.lastSentRev !== undefined) {
+    lossy = true;
   }
   return { data, lossy };
 }

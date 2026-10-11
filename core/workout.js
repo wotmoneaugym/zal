@@ -2,8 +2,9 @@ import { isoWeekdayOf } from "./dates.js";
                                                     
 import { parseResult } from "./parse-result.js";
                                                 
-import { findPrevious,                } from "./previous.js";
+import { findPrevious, NO_PREVIOUS,                } from "./previous.js";
 import { renderNote } from "./render-note.js";
+import { MAX_FIELD, TEMPLATER_CLOSE, TEMPLATER_OPEN, validateField } from "./validate.js";
 
                                                                                                                                
                                                                                                                                                
@@ -14,6 +15,24 @@ export const ALREADY_EXISTS = "Заметка на сегодня уже ест�
                                          
                                                  
                                                 
+
+/** Obsidian allows free-form old results; the phone must publish a safe, single-line excerpt. */
+function safePrevious(value        )         {
+  if (validateField(value, "previous").ok) return value;
+  let text = value
+    .replace(/[\u0000-\u001F\u007F-\u009F\u2028\u2029]/gu, " ")
+    .replace(/[\uD800-\uDFFF]/gu, "\uFFFD")
+    .replaceAll(TEMPLATER_OPEN, "‹%")
+    .replaceAll(TEMPLATER_CLOSE, "%›")
+    .trim();
+  if (text.startsWith("> ") || text.startsWith("Результат:")) text = `— ${text}`;
+  if (text.length > MAX_FIELD) {
+    let prefix = text.slice(0, MAX_FIELD - 1);
+    if (/[\uD800-\uDBFF]$/u.test(prefix)) prefix = prefix.slice(0, -1);
+    text = `${prefix}…`;
+  }
+  return validateField(text, "previous").ok ? text : NO_PREVIOUS;
+}
 
 /** «Новый день»: what Скрипт.md does for the given local date, without touching any file. */
 export function newDay(input                                                                                                                             )                {
@@ -26,7 +45,7 @@ export function newDay(input                                                    
     name: exercise.name,
     plan: exercise.plan,
     rest: exercise.rest,
-    previous: findPrevious(exercise.name, input.date, input.candidates, input.program.initialResults),
+    previous: safePrevious(findPrevious(exercise.name, input.date, input.candidates, input.program.initialResults)),
     result: "",
   }));
   return { kind: "created", workout: { schema: 1, id: input.id, rev: 1, date: input.date, weekday: day.name, exercises, updatedAt: input.nowIso } };
