@@ -1,0 +1,236 @@
+/* Трекер: calm, note-like reading view. System fonts only, light and dark follow the phone,
+   no animation except a short focus transition on input fields. */
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --text: #1f1f1f;
+  --muted: #5f5f63;
+  --line: #e3e3e6;
+  --field: #f6f6f7;
+  --quote-bg: rgba(142, 142, 147, 0.1);
+  --quote-edge: rgba(142, 142, 147, 0.5);
+  --accent: #5a4fcf;
+  --on-accent: #ffffff;
+  --ring: rgba(90, 79, 207, 0.25);
+  --gutter: 20px;
+  --tap: 48px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1c1e;
+    --text: #e6e6e8;
+    --muted: #a1a1a6;
+    --line: #38383c;
+    --field: #262628;
+    --quote-bg: rgba(142, 142, 147, 0.14);
+    --quote-edge: rgba(142, 142, 147, 0.45);
+    --accent: #a59cff;
+    --on-accent: #17162a;
+    --ring: rgba(165, 156, 255, 0.3);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 17px;
+  line-height: 1.55;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.sheet {
+  flex: 1 0 auto;
+  width: 100%;
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + 20px) calc(env(safe-area-inset-right) + var(--gutter)) 28px calc(env(safe-area-inset-left) + var(--gutter));
+}
+
+.note-title {
+  margin: 4px 0 6px;
+  font-size: 1.45rem;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.exercise {
+  padding-top: 22px;
+}
+
+.exercise p {
+  margin: 0;
+}
+
+.exercise strong {
+  font-weight: 700;
+}
+
+.exercise-plan {
+  margin-top: 2px;
+}
+
+.callout {
+  margin: 12px 0;
+  padding: 10px 14px;
+  background: var(--quote-bg);
+  border-left: 3px solid var(--quote-edge);
+  border-radius: 4px;
+}
+
+.callout-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.callout-body {
+  overflow-wrap: anywhere;
+}
+
+.result {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.result-label {
+  flex: none;
+}
+
+.result-input,
+.key-input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--tap);
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 17px;
+  color: var(--text);
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.result-input:focus,
+.key-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.actions {
+  padding-top: 32px;
+}
+
+.button {
+  display: block;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 12px 16px;
+  font: inherit;
+  font-weight: 600;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.button-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.button-quiet {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--line);
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.message {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  background: var(--quote-bg);
+  border-radius: 10px;
+}
+
+.empty,
+.lead {
+  margin: 8px 0 20px;
+  color: var(--muted);
+}
+
+.field {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.steps {
+  margin: 0 0 20px;
+  padding-left: 1.4em;
+}
+
+.steps li {
+  margin: 8px 0;
+}
+
+.status {
+  position: sticky;
+  bottom: 0;
+  padding: 10px calc(env(safe-area-inset-right) + var(--gutter)) calc(env(safe-area-inset-bottom) + 10px) calc(env(safe-area-inset-left) + var(--gutter));
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .result-input,
+  .key-input {
+    transition: none;
+  }
+}
