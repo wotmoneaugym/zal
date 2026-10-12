@@ -2,6 +2,11 @@
 // All text goes through textContent, never parsed as HTML; no inline styles (CSP style-src 'self'); the clock
 // icon is a CSS background, so no SVG is built here. Re-rendering the same screen only updates values, so the
 // field being typed in keeps focus and caret.
+// Motion (Emil Kowalski's rules): only when the screen changes, never on a re-render while typing and never on a
+// keyboard action. A deeper screen (main → history → note) slides in from the right, going back from the left and
+// faster; the exercises right after «Новый день» and the history rows (opened from the main screen) rise in a short
+// cascade; a changed status line crossfades. transform/opacity/filter only, through element.animate() (CSP-safe,
+// interruptible, skipped when the browser lacks it); reduced motion keeps only short opacity fades.
 import { parseNote,                   } from "../core/parse-note.js";
                                                      
 import { MAX_FIELD } from "../core/validate.js";
@@ -24,11 +29,16 @@ import { MAX_FIELD } from "../core/validate.js";
 
                    
               
+                                                                                                               
+                           
                          
                                         
                          
                        
-                      
+                                                                                                           
+                                                                                      
+                     
+                                                                                              
  
 
 const mounted = new WeakMap                      ();
@@ -43,6 +53,15 @@ const WEEKDAY_SHORT                         = {
 };
 const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
 
+const EASE_OUT = "cubic-bezier(0.23, 1, 0.32, 1)";
+const ENTER_MS = 220;      // deeper screen
+const BACK_MS = 160;       // going back: exits are faster than entrances
+const RISE_MS = 260;
+const RISE_STEP_MS = 35;
+const RISE_MAX_STEPS = 7;
+const STATUS_MS = 200;
+const REDUCED_FADE_MS = 150;
+
 export function isStandalone(win        , dev         )          {
   if (win.matchMedia("(display-mode: standalone)").matches) return true;
   if ((win.navigator                                        ).standalone === true) return true;
@@ -50,13 +69,63 @@ export function isStandalone(win        , dev         )          {
 }
 
 export function render(root             , vm           , handlers              )       {
+  const doc = root.ownerDocument;
   const key = screenKey(vm, handlers.standalone);
-  let view = mounted.get(root);
+  const previous = mounted.get(root);
+  let view = previous;
   if (view === undefined || view.key !== key) {
-    view = mount(root, vm, key, handlers);
+    view = mount(root, vm, key, handlers, previous);
     mounted.set(root, view);
+    if (previous !== undefined) enter(view, previous, reducedMotion(doc));
   }
-  update(view, root.ownerDocument, vm, handlers);
+  update(view, doc, vm, handlers);
+}
+
+function reducedMotion(doc          )          {
+  try {
+    return doc.defaultView?.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+  } catch {
+    return false;
+  }
+}
+
+// Motion is decoration: a browser without the Web Animations API (or one that rejects the options) just shows the screen.
+function animate(node             , keyframes            , options                          )       {
+  try {
+    node.animate?.(keyframes, options);
+  } catch {
+    // no animation, same screen
+  }
+}
+
+function screenDepth(vm           , key        )                {
+  if (key === "key" || key === "install") return null;
+  if (vm.screen === "history") return vm.selectedHistoryFile === null ? 1 : 2;
+  return 0;
+}
+
+// Runs once per new screen, never on a re-render of the same one.
+function enter(view         , previous         , reduced         )       {
+  if (view.depth !== null && previous.depth !== null && view.depth !== previous.depth) {
+    const deeper = view.depth > previous.depth;
+    if (reduced) {
+      animate(view.sheet, [{ opacity: 0 }, { opacity: 1 }], { duration: REDUCED_FADE_MS, easing: "ease", fill: "backwards" });
+    } else {
+      animate(view.sheet, [{ opacity: 0, transform: deeper ? "translateX(12px)" : "translateX(-12px)" }, { opacity: 1, transform: "translateX(0)" }], {
+        duration: deeper ? ENTER_MS : BACK_MS, easing: EASE_OUT, fill: "backwards",
+      });
+    }
+  }
+  if (reduced) return;
+  // «Новый день» has just created a workout (rare), or the history list was opened from the main screen.
+  const newWorkout = view.depth === 0 && previous.depth === 0 && view.workoutId !== null && view.workoutId !== previous.workoutId;
+  const openedList = view.depth === 1 && previous.depth === 0;
+  if (!newWorkout && !openedList) return;
+  view.items.forEach((item, index) => {
+    animate(item, [{ opacity: 0, transform: "translateY(8px)" }, { opacity: 1, transform: "translateY(0)" }], {
+      duration: RISE_MS, delay: Math.min(index, RISE_MAX_STEPS) * RISE_STEP_MS, easing: EASE_OUT, fill: "backwards",
+    });
+  });
 }
 
 function screenKey(vm           , standalone         )         {
@@ -84,20 +153,25 @@ function noteTitle(file        )         {
   return file.replace(/\.md$/u, "");
 }
 
-function mount(root             , vm           , key        , handlers              )          {
+function mount(root             , vm           , key        , handlers              , previous                     )          {
   const doc = root.ownerDocument;
   const view          = {
     key,
+    depth: screenDepth(vm, key),
+    workoutId: vm.screen === "main" ? (vm.workout?.id ?? null) : null,
     handlers,
     inputs: new Map(),
     buttons: [],
     message: el(doc, "p", "message"),
-    status: el(doc, "footer", "status"),
+    status: previous?.status ?? el(doc, "footer", "status"),
+    statusText: previous?.statusText ?? null,
+    sheet: root,
+    items: [],
   };
   view.message.setAttribute("role", "status");
   view.status.setAttribute("aria-live", "polite");
-  const sheet = key === "install" ? installSheet(doc, view) : key === "key" ? keySheet(doc, view) : vm.screen === "history" ? historySheet(doc, vm, view) : mainSheet(doc, vm, view);
-  root.replaceChildren(sheet, view.status);
+  view.sheet = key === "install" ? installSheet(doc, view) : key === "key" ? keySheet(doc, view) : vm.screen === "history" ? historySheet(doc, vm, view) : mainSheet(doc, vm, view);
+  root.replaceChildren(view.sheet, view.status);
   return view;
 }
 
@@ -126,7 +200,11 @@ function mainSheet(doc          , vm           , view         )              {
   const content = el(doc, "div", workout === null ? "empty-content" : "workout-content");
   if (workout !== null) {
     content.append(el(doc, "h1", "note-title", `${workout.weekday} — ${workout.date}`));
-    for (const exercise of workout.exercises) content.append(exerciseBlock(doc, exercise, view));
+    for (const exercise of workout.exercises) {
+      const block = exerciseBlock(doc, exercise, view);
+      view.items.push(block);
+      content.append(block);
+    }
   }
   const actions = el(doc, "div", "actions");
   const newDay = button(doc, view, workout === null ? "button button-primary" : "button button-quiet", "Новый день", "Новый день…");
@@ -159,6 +237,7 @@ function historySheet(doc          , vm           , view         )              
     for (const note of vm.history) {
       const item = button(doc, view, "button history-item", noteTitle(note.file), noteTitle(note.file));
       item.addEventListener("click", () => view.handlers.onOpenHistoryNote(note.file));
+      view.items.push(item);
       list.append(item);
     }
     content.append(list);
@@ -283,6 +362,25 @@ function update(view         , doc          , vm           , handlers           
   }
   view.message.textContent = vm.message ?? "";
   view.message.hidden = vm.message === null || vm.message === "";
-  view.status.textContent = vm.status;
+  if (view.statusText !== vm.status) {
+    // «сохранено» ↔ «отправлено» flips on every edit: frequent changes stay still (Emil: high frequency → no motion).
+    const routine = typingStatus(view.statusText ?? "") && typingStatus(vm.status);
+    const changed = view.statusText !== null && vm.status !== "" && !routine;
+    view.statusText = vm.status;
+    view.status.textContent = vm.status;
+    view.status.hidden = vm.status === "";
+    if (changed) crossfadeStatus(view.status, reducedMotion(doc));
+  }
   view.status.hidden = vm.status === "";
+}
+
+// Statuses that alternate on every edit: «сохранено» → «отправлено» (or «ПК обновлял данные: …» when the PC is quiet).
+function typingStatus(text        )          {
+  return text === "сохранено в телефоне" || text === "отправлено" || text.startsWith("ПК обновлял данные");
+}
+
+// The new status text settles in from a soft, slightly blurred state instead of swapping abruptly; first paint is still.
+function crossfadeStatus(status             , reduced         )       {
+  if (reduced) animate(status, [{ opacity: 0.4 }, { opacity: 1 }], { duration: REDUCED_FADE_MS, easing: "ease" });
+  else animate(status, [{ opacity: 0.4, filter: "blur(2px)" }, { opacity: 1, filter: "blur(0)" }], { duration: STATUS_MS, easing: "ease" });
 }
