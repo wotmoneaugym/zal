@@ -7,6 +7,8 @@ import { GitHubError,                   } from "./github.js";
                                                                                                                                                                                                                                                                                     
 
 const RETRY_DELAYS_MS = [1000, 3000, 10000];
+// The detail of an "error" status when fetch itself failed; the controller treats it as "no network", not as a failure.
+export const NO_NETWORK = "нет связи";
 const EXTRA_PASSES = 2;
 
                                                      
@@ -19,7 +21,7 @@ function remoteField(remote        , name              )          {
 
 function describe(error         )         {
   if (error instanceof GitHubError) return error.message;
-  if (error instanceof TypeError) return "нет связи"; // fetch rejects with TypeError when offline
+  if (error instanceof TypeError) return NO_NETWORK; // fetch rejects with TypeError when offline
   return error instanceof Error ? error.message : String(error);
 }
 

@@ -60,7 +60,7 @@ function sanitize(raw         )                                      {
   else if (raw.apiBase !== undefined) lossy = true;
   if (Array.isArray(raw.workouts)) {
     data.workouts = raw.workouts.filter(isWorkoutLike);
-    lossy = data.workouts.length !== raw.workouts.length;
+    if (data.workouts.length !== raw.workouts.length) lossy = true;
   } else if (raw.workouts !== undefined) {
     lossy = true;
   }

@@ -1,6 +1,9 @@
-// Screens of the phone app drawn from the controller's ViewModel: a note-like reading view.
-// All text goes through textContent, never parsed as HTML; no inline styles (CSP style-src 'self').
-// Re-rendering the same screen only updates values, so the field being typed in keeps focus and caret.
+// Screens of the phone app drawn from the controller's ViewModel: a dark, note-like reading view (artboard V3).
+// All text goes through textContent, never parsed as HTML; no inline styles (CSP style-src 'self'); the clock
+// icon is a CSS background, so no SVG is built here. Re-rendering the same screen only updates values, so the
+// field being typed in keeps focus and caret.
+import { parseNote,                   } from "../core/parse-note.js";
+                                                     
 import { MAX_FIELD } from "../core/validate.js";
                                                              
                                                  
@@ -29,6 +32,16 @@ import { MAX_FIELD } from "../core/validate.js";
  
 
 const mounted = new WeakMap                      ();
+
+const HISTORY_LABEL = "История тренировок";
+const PREVIOUS_LABEL = "Прошлый раз";
+const RESULT_LABEL = "Результат";
+const EMPTY_RESULT = "—";
+// «пн, 12 окт» next to the clock: the workout's own weekday and date, nothing derived from the phone's clock.
+const WEEKDAY_SHORT                         = {
+  "ПОНЕДЕЛЬНИК": "пн", "ВТОРНИК": "вт", "СРЕДА": "ср", "ЧЕТВЕРГ": "чт", "ПЯТНИЦА": "пт", "СУББОТА": "сб", "ВОСКРЕСЕНЬЕ": "вс",
+};
+const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
 
 export function isStandalone(win        , dev         )          {
   if (win.matchMedia("(display-mode: standalone)").matches) return true;
@@ -59,6 +72,18 @@ function el                                       (doc          , tag   , classN
   return node;
 }
 
+function shortDate(weekday        , date        )         {
+  const parts = date.split("-");
+  const month = parts.length === 3 ? MONTHS_SHORT[Number(parts[1]) - 1] : undefined;
+  const day = Number(parts[2]);
+  if (month === undefined || !Number.isInteger(day) || day < 1) return date;
+  return Object.hasOwn(WEEKDAY_SHORT, weekday) ? `${WEEKDAY_SHORT[weekday]}, ${day} ${month}` : `${day} ${month}`;
+}
+
+function noteTitle(file        )         {
+  return file.replace(/\.md$/u, "");
+}
+
 function mount(root             , vm           , key        , handlers              )          {
   const doc = root.ownerDocument;
   const view          = {
@@ -83,18 +108,24 @@ function button(doc          , view         , className        , idle        , b
   return node;
 }
 
+// Header of the main and history screens: one control on the left, an optional muted text on the right.
+function topbar(doc          , left             , right                    )              {
+  const bar = el(doc, "header", "topbar");
+  bar.append(left);
+  if (right !== null) bar.append(right);
+  return bar;
+}
+
 function mainSheet(doc          , vm           , view         )              {
-  const sheet = el(doc, "main", vm.workout === null ? "sheet sheet-empty" : "sheet");
-  const header = el(doc, "header", "topbar");
-  const history = button(doc, view, "button history-open", "История", "История");
-  history.setAttribute("aria-label", "История тренировок");
-  history.addEventListener("click", () => view.handlers.onOpenHistory());
-  header.append(history);
-  sheet.append(header);
   const workout = vm.workout;
+  const sheet = el(doc, "main", workout === null ? "sheet sheet-empty" : "sheet");
+  const clock = button(doc, view, "icon history-open", "", "");
+  clock.setAttribute("aria-label", HISTORY_LABEL);
+  clock.addEventListener("click", () => view.handlers.onOpenHistory());
+  sheet.append(topbar(doc, clock, workout === null ? null : el(doc, "span", "topbar-date", shortDate(workout.weekday, workout.date))));
   const content = el(doc, "div", workout === null ? "empty-content" : "workout-content");
   if (workout !== null) {
-    content.append(el(doc, "h1", "note-title", `${workout.weekday} \u2014 ${workout.date}`));
+    content.append(el(doc, "h1", "note-title", `${workout.weekday} — ${workout.date}`));
     for (const exercise of workout.exercises) content.append(exerciseBlock(doc, exercise, view));
   }
   const actions = el(doc, "div", "actions");
@@ -111,44 +142,80 @@ function mainSheet(doc          , vm           , view         )              {
 
 function historySheet(doc          , vm           , view         )              {
   const sheet = el(doc, "main", "sheet history-sheet");
-  const back = button(doc, view, "button history-back", "Назад", "Назад");
+  const back = button(doc, view, "button button-quiet history-back", "Назад", "Назад");
   back.addEventListener("click", () => view.handlers.onBackHistory());
-  sheet.append(back);
+  sheet.append(topbar(doc, back, null));
   const selected = vm.history.find((note) => note.file === vm.selectedHistoryFile);
   if (selected !== undefined) {
-    sheet.append(el(doc, "h1", "note-title", selected.file.replace(/\.md$/u, "")));
-    sheet.append(el(doc, "pre", "history-text", selected.text));
+    sheet.append(noteView(doc, selected));
     return sheet;
   }
-  sheet.append(el(doc, "h1", "note-title", "История тренировок"));
+  const content = el(doc, "div", "history-content");
+  content.append(el(doc, "h1", "note-title", HISTORY_LABEL));
   if (vm.history.length === 0) {
-    sheet.append(el(doc, "p", "empty", "Пока нет прошлых тренировок."));
+    content.append(el(doc, "p", "empty", "Пока нет прошлых тренировок."));
   } else {
     const list = el(doc, "div", "history-list");
     for (const note of vm.history) {
-      const item = button(doc, view, "button history-item", note.file.replace(/\.md$/u, ""), note.file.replace(/\.md$/u, ""));
+      const item = button(doc, view, "button history-item", noteTitle(note.file), noteTitle(note.file));
       item.addEventListener("click", () => view.handlers.onOpenHistoryNote(note.file));
       list.append(item);
     }
-    sheet.append(list);
+    content.append(list);
   }
+  sheet.append(content);
   return sheet;
+}
+
+// parseNote knows the exact Templater layout; a note it cannot read (an old hand-written one) is shown as plain text.
+function parsed(note           )                      {
+  // A NUL run followed by text makes parseNote's trailing-NUL regex quadratic: show such notes (and huge ones) as text.
+  if (typeof note.text !== "string" || note.text.length > 20000 || /\0[^\0]/u.test(note.text)) return null;
+  try {
+    return parseNote(note.text, note.file.slice(note.file.lastIndexOf("/") + 1));
+  } catch {
+    return null;
+  }
+}
+
+// A past note rendered like the main screen, read-only: result as text, no plan/rest line.
+function noteView(doc          , note           )              {
+  const content = el(doc, "div", "workout-content history-note");
+  content.append(el(doc, "h1", "note-title", noteTitle(note.file)));
+  const training = parsed(note);
+  if (training === null) {
+    content.append(el(doc, "pre", "history-text", note.text));
+    return content;
+  }
+  for (const exercise of training.exercises) {
+    const block = el(doc, "section", "exercise");
+    const result = el(doc, "p", "result-text");
+    result.append(el(doc, "span", "result-text-label", RESULT_LABEL), exercise.resultRaw.trim() === "" ? EMPTY_RESULT : exercise.resultRaw);
+    block.append(exerciseName(doc, exercise.number, exercise.name), previousQuote(doc, exercise.previousRaw), result);
+    content.append(block);
+  }
+  return content;
+}
+
+function exerciseName(doc          , number        , name        )              {
+  return el(doc, "h2", "exercise-name", `${number}. ${name}`);
+}
+
+function previousQuote(doc          , previous        )              {
+  const quote = el(doc, "blockquote", "callout");
+  quote.append(el(doc, "span", "callout-title", PREVIOUS_LABEL), el(doc, "span", "callout-body", previous));
+  return quote;
 }
 
 function exerciseBlock(doc          , exercise                 , view         )              {
   const block = el(doc, "section", "exercise");
-  const name = el(doc, "p", "exercise-name");
-  name.append(el(doc, "strong", "", `${exercise.number}. ${exercise.name}`));
-  const plan = el(doc, "p", "exercise-plan");
-  plan.append("План: ", el(doc, "strong", "", exercise.plan), " | Отдых: ", el(doc, "strong", "", exercise.rest));
-  const quote = el(doc, "blockquote", "callout");
-  quote.append(el(doc, "p", "callout-title", "Прошлый раз"), el(doc, "p", "callout-body", exercise.previous));
   const field = el(doc, "label", "result");
   const input = el(doc, "input", "result-input");
   input.setAttribute("type", "text");
   input.setAttribute("enterkeyhint", "done");
   input.setAttribute("maxlength", String(MAX_FIELD));
-  input.setAttribute("aria-label", `Результат: ${exercise.number}. ${exercise.name}`);
+  input.setAttribute("placeholder", RESULT_LABEL);
+  input.setAttribute("aria-label", `${RESULT_LABEL}: ${exercise.number}. ${exercise.name}`);
   input.value = exercise.result;
   input.addEventListener("input", () => view.handlers.onResultInput(exercise.number, input.value));
   input.addEventListener("keydown", (event) => {
@@ -157,8 +224,8 @@ function exerciseBlock(doc          , exercise                 , view         ) 
     input.blur();
   });
   input.addEventListener("blur", () => view.handlers.onResultDone());
-  field.append(el(doc, "span", "result-label", "Результат:"), input);
-  block.append(name, plan, quote, field);
+  field.append(el(doc, "span", "result-label", RESULT_LABEL), input);
+  block.append(exerciseName(doc, exercise.number, exercise.name), previousQuote(doc, exercise.previous), field);
   view.inputs.set(exercise.number, input);
   return block;
 }

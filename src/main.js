@@ -92,6 +92,8 @@ window.addEventListener("pageshow", () => {
 });
 window.addEventListener("pagehide", () => controller.onHidden());
 window.addEventListener("online", () => controller.onOnline());
+// iOS Safari applies :active (the 0.97 press scale) on tap only when the page listens for touches.
+document.addEventListener("touchstart", () => undefined, { passive: true });
 
 // GitHub answers arrive asynchronously; repaint when what the screen shows has changed.
 setInterval(() => {

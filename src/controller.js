@@ -5,7 +5,7 @@ import { candidatesFor, deliveryLabel, existingDates,                           
 import { validateField, validateWorkout } from "../core/validate.js";
 import { newDay as planNewDay, withResult,                                  } from "../core/workout.js";
 import { createGitHubClient, GitHubError,                   } from "./github.js";
-import { createSender } from "./sender.js";
+import { createSender, NO_NETWORK } from "./sender.js";
                                               
 
                              
@@ -33,6 +33,7 @@ const KEY_REJECTED = "GitHub не принял ключ. Нужен fine-grained
 const KEY_OFFLINE = "Нет связи с GitHub. Подключитесь к интернету и сохраните ключ ещё раз.";
 const KEY_UNREADABLE = "Ключ не работает: в нём невидимый или недопустимый символ. Скопируйте ключ и вставьте его ещё раз.";
 const STORAGE_FAILED = "не удалось сохранить в телефоне — данные только в памяти";
+const NOT_SENT = "не отправлено: ";
 const DEFAULT_REPO = "workout-data";
 const API_VERSION = "2022-11-28";
 const SEND_DELAY_MS = 2500; // after the last edit (design §9: 2–3 s)
@@ -88,6 +89,9 @@ export function createController(deps                                           
   if (!looksLikeState(data.state)) data.state = null; // storage keeps state by schema only (Task 17): a malformed copy counts as never fetched
   let storageFailed = false; // the last save failed (quota, private mode): data lives in memory only
   let keyRejected = false; // GitHub refused the stored key; in memory only, rechecked after every restart
+  // Why the last send attempt failed (GitHub 5xx, a field that fails validation): shown while the current version is unsent.
+  // Cleared by the next saved/sent/key-invalid. No network is not a failure: the gym has none, «сохранено в телефоне» stays.
+  let sendError                = null;
   let message                = null;
   let sendTimer          = null;
   let syncTimer          = null;
@@ -115,9 +119,10 @@ export function createController(deps                                           
       data.lastSentRev[id] = Math.max(sentRev(id), rev);
       persist();
     },
-    onStatus: (status) => {
+    onStatus: (status, detail) => {
       // With a client in hand "key-invalid" means GitHub refused the key; without one it only means "no key yet".
       if (status === "key-invalid" && client() !== null) keyRejected = true;
+      sendError = status === "error" && detail !== NO_NETWORK ? (detail ?? "ошибка отправки") : null;
     },
     sleep: (ms        ) => new Promise      ((resolve) => {
       deps.setTimer(resolve, ms);
@@ -146,7 +151,7 @@ export function createController(deps                                           
       if (delivery.status === "conflict") return CONFLICT;
       if (delivery.status === "rejected" || delivery.status === "held") return `ПК не принял: ${delivery.reason ?? delivery.status}`;
     }
-    if (sent < w.rev) return SAVED;
+    if (sent < w.rev) return sendError === null ? SAVED : `${NOT_SENT}${sendError}`;
     if (state !== null && deps.now().getTime() - Date.parse(state.lastSuccessAt) > PC_QUIET_MS) {
       return `ПК обновлял данные: ${pcTime(state.lastSuccessAt)}`;
     }
