@@ -75,17 +75,26 @@ body {
   margin-top: calc(env(safe-area-inset-top) + 24px);
 }
 
-/* Header: the control sits 12 px left of the text column, like the artboard (icon at 8 px, text at 20 px). */
+/* Header: back arrow on the left, the date in the middle, the clock on the right. The icons sit 12 px outside the
+   text column on both sides, like the artboard (icon at 8 px, text at 20 px). */
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   min-height: var(--tap);
-  margin: 0 0 0 -12px;
+  margin: 0 -12px;
   padding: calc(env(safe-area-inset-top) + 6px) 0 0;
 }
 
+/* Alone on the home screen the clock still belongs to the right corner. */
+.topbar .history-open {
+  margin-left: auto;
+}
+
 .topbar-date {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
   font-size: 13px;
   color: var(--muted);
 }
@@ -308,7 +317,7 @@ body {
   transform: none;
 }
 
-/* Clock button of the header: the icon is the artboard's 24 px outline clock, drawn as a CSS image
+/* Icon buttons of the header: 24 px outline glyphs (the artboard's clock, a chevron back) drawn as CSS images
    (CSP img-src allows data:), so the screen builds no SVG markup. */
 .icon {
   width: var(--tap);
@@ -318,10 +327,17 @@ body {
   border-radius: 12px;
   color: var(--text);
   background-color: transparent;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23f2f2f4' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: center;
   background-size: 24px 24px;
+}
+
+.icon.history-open {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23f2f2f4' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E");
+}
+
+.icon.back {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23f2f2f4' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 18l-6-6 6-6'/%3E%3C/svg%3E");
 }
 
 .icon:active {

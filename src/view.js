@@ -1,12 +1,14 @@
 // Screens of the phone app drawn from the controller's ViewModel: a dark, note-like reading view (artboard V3).
-// All text goes through textContent, never parsed as HTML; no inline styles (CSP style-src 'self'); the clock
-// icon is a CSS background, so no SVG is built here. Re-rendering the same screen only updates values, so the
-// field being typed in keeps focus and caret.
+// All text goes through textContent, never parsed as HTML; no inline styles (CSP style-src 'self'); the clock and
+// back-arrow icons are CSS backgrounds, so no SVG is built here. Re-rendering the same screen only updates values, so
+// the field being typed in keeps focus and caret.
 // Motion (Emil Kowalski's rules): only when the screen changes, never on a re-render while typing and never on a
 // keyboard action. A deeper screen (main → history → note) slides in from the right, going back from the left and
-// faster; the exercises right after «Новый день» and the history rows (opened from the main screen) rise in a short
-// cascade; a changed status line crossfades. transform/opacity/filter only, through element.animate() (CSP-safe,
-// interruptible, skipped when the browser lacks it); reduced motion keeps only short opacity fades.
+// faster; closing the workout with the back arrow slides the home screen in from the left, «Новый день» bringing the
+// same workout back slides it in from the right; the exercises of a newly created workout and the history rows
+// (opened from the main screen) rise in a short cascade; a changed status line crossfades. transform/opacity/filter
+// only, through element.animate() (CSP-safe, interruptible, skipped when the browser lacks it); reduced motion keeps
+// only short opacity fades.
 import { parseNote,                   } from "../core/parse-note.js";
                                                      
 import { MAX_FIELD } from "../core/validate.js";
@@ -23,6 +25,7 @@ import { MAX_FIELD } from "../core/validate.js";
                         
                                         
                         
+                                                                                                  
  
 
                                                                                
@@ -31,6 +34,7 @@ import { MAX_FIELD } from "../core/validate.js";
               
                                                                                                                
                            
+                                                                                                          
                          
                                         
                          
@@ -44,6 +48,8 @@ import { MAX_FIELD } from "../core/validate.js";
 const mounted = new WeakMap                      ();
 
 const HISTORY_LABEL = "История тренировок";
+const CLOSE_LABEL = "Закрыть тренировку";
+const BACK_LABEL = "Назад";
 const PREVIOUS_LABEL = "Прошлый раз";
 const RESULT_LABEL = "Результат";
 const EMPTY_RESULT = "—";
@@ -106,8 +112,13 @@ function screenDepth(vm           , key        )                {
 
 // Runs once per new screen, never on a re-render of the same one.
 function enter(view         , previous         , reduced         )       {
-  if (view.depth !== null && previous.depth !== null && view.depth !== previous.depth) {
-    const deeper = view.depth > previous.depth;
+  const onMain = view.depth === 0 && previous.depth === 0;
+  // Back arrow: the workout is gone from the main screen. «Новый день» brought the same workout back (not created).
+  const closed = onMain && previous.workoutId !== null && view.workoutId === null;
+  const reopened = onMain && previous.workoutId === null && view.workoutId !== null && view.reopened;
+  const otherDepth = view.depth !== null && previous.depth !== null && view.depth !== previous.depth;
+  if (otherDepth || closed || reopened) {
+    const deeper = reopened || (otherDepth && (view.depth ?? 0) > (previous.depth ?? 0));
     if (reduced) {
       animate(view.sheet, [{ opacity: 0 }, { opacity: 1 }], { duration: REDUCED_FADE_MS, easing: "ease", fill: "backwards" });
     } else {
@@ -118,7 +129,7 @@ function enter(view         , previous         , reduced         )       {
   }
   if (reduced) return;
   // «Новый день» has just created a workout (rare), or the history list was opened from the main screen.
-  const newWorkout = view.depth === 0 && previous.depth === 0 && view.workoutId !== null && view.workoutId !== previous.workoutId;
+  const newWorkout = onMain && !reopened && view.workoutId !== null && view.workoutId !== previous.workoutId;
   const openedList = view.depth === 1 && previous.depth === 0;
   if (!newWorkout && !openedList) return;
   view.items.forEach((item, index) => {
@@ -159,6 +170,7 @@ function mount(root             , vm           , key        , handlers          
     key,
     depth: screenDepth(vm, key),
     workoutId: vm.screen === "main" ? (vm.workout?.id ?? null) : null,
+    reopened: vm.screen === "main" && vm.workout !== null && vm.reopened,
     handlers,
     inputs: new Map(),
     buttons: [],
@@ -182,12 +194,20 @@ function button(doc          , view         , className        , idle        , b
   return node;
 }
 
-// Header of the main and history screens: one control on the left, an optional muted text on the right.
-function topbar(doc          , left             , right                    )              {
+// Header of the main and history screens: the back arrow on the left (when there is somewhere to go back), the
+// workout's date in the middle, the clock on the right (CSS keeps a lone clock on the right edge).
+function topbar(doc          , ...items                           )              {
   const bar = el(doc, "header", "topbar");
-  bar.append(left);
-  if (right !== null) bar.append(right);
+  for (const item of items) if (item !== null) bar.append(item);
   return bar;
+}
+
+// 44×44 icon button with a 24 px chevron drawn by CSS; the label is for assistive tech only.
+function backArrow(doc          , view         , className        , label        , action            )                    {
+  const arrow = button(doc, view, `icon back ${className}`, "", "");
+  arrow.setAttribute("aria-label", label);
+  arrow.addEventListener("click", action);
+  return arrow;
 }
 
 function mainSheet(doc          , vm           , view         )              {
@@ -196,7 +216,9 @@ function mainSheet(doc          , vm           , view         )              {
   const clock = button(doc, view, "icon history-open", "", "");
   clock.setAttribute("aria-label", HISTORY_LABEL);
   clock.addEventListener("click", () => view.handlers.onOpenHistory());
-  sheet.append(topbar(doc, clock, workout === null ? null : el(doc, "span", "topbar-date", shortDate(workout.weekday, workout.date))));
+  const close = workout === null ? null : backArrow(doc, view, "workout-close", CLOSE_LABEL, () => view.handlers.onCloseWorkout());
+  const date = workout === null ? null : el(doc, "span", "topbar-date", shortDate(workout.weekday, workout.date));
+  sheet.append(topbar(doc, close, date, clock));
   const content = el(doc, "div", workout === null ? "empty-content" : "workout-content");
   if (workout !== null) {
     content.append(el(doc, "h1", "note-title", `${workout.weekday} — ${workout.date}`));
@@ -220,9 +242,7 @@ function mainSheet(doc          , vm           , view         )              {
 
 function historySheet(doc          , vm           , view         )              {
   const sheet = el(doc, "main", "sheet history-sheet");
-  const back = button(doc, view, "button button-quiet history-back", "Назад", "Назад");
-  back.addEventListener("click", () => view.handlers.onBackHistory());
-  sheet.append(topbar(doc, back, null));
+  sheet.append(topbar(doc, backArrow(doc, view, "history-back", BACK_LABEL, () => view.handlers.onBackHistory())));
   const selected = vm.history.find((note) => note.file === vm.selectedHistoryFile);
   if (selected !== undefined) {
     sheet.append(noteView(doc, selected));
@@ -363,20 +383,14 @@ function update(view         , doc          , vm           , handlers           
   view.message.textContent = vm.message ?? "";
   view.message.hidden = vm.message === null || vm.message === "";
   if (view.statusText !== vm.status) {
-    // «сохранено» ↔ «отправлено» flips on every edit: frequent changes stay still (Emil: high frequency → no motion).
-    const routine = typingStatus(view.statusText ?? "") && typingStatus(vm.status);
-    const changed = view.statusText !== null && vm.status !== "" && !routine;
+    // Only problems reach the status line (routine states are ""), so every visible change is worth a soft crossfade.
+    const changed = view.statusText !== null && vm.status !== "";
     view.statusText = vm.status;
     view.status.textContent = vm.status;
     view.status.hidden = vm.status === "";
     if (changed) crossfadeStatus(view.status, reducedMotion(doc));
   }
   view.status.hidden = vm.status === "";
-}
-
-// Statuses that alternate on every edit: «сохранено» → «отправлено» (or «ПК обновлял данные: …» when the PC is quiet).
-function typingStatus(text        )          {
-  return text === "сохранено в телефоне" || text === "отправлено" || text.startsWith("ПК обновлял данные");
 }
 
 // The new status text settles in from a soft, slightly blurred state instead of swapping abruptly; first paint is still.

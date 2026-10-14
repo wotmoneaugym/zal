@@ -8,23 +8,26 @@ import { createGitHubClient, GitHubError,                   } from "./github.js"
 import { createSender, NO_NETWORK } from "./sender.js";
                                               
 
+// What «Новый день» did: core/workout.ts outcomes, plus the phone-only "no program yet" and "opened" (today's workout
+// already exists on the phone and is shown again, instantly and without the network).
+                                                                                                                          
+
                              
                      
                                                                  
                                                                                                                                                                     
-                                                                                      
+                                           
                                                                                                                                      
+                                                                                                                     
                       
                                       
                       
                                                         
  
 
-                                                                                                                                                                                            
+// reopened: the workout on screen was brought back by «Новый день» (not created), so the screen slides it in without a cascade.
+                                                                                                                                                                                                               
 
-const SAVED = "сохранено в телефоне";
-const SENT = "отправлено";
-const IN_OBSIDIAN = "в Обсидиане";
 const KEY_BROKEN = "ключ не работает — тренировки только в телефоне";
 const CONFLICT = "конфликт: на эту дату уже есть заметка";
 const NO_PROGRAM = "нет программы — откройте приложение со связью";
@@ -39,8 +42,9 @@ const API_VERSION = "2022-11-28";
 const SEND_DELAY_MS = 2500; // after the last edit (design §9: 2–3 s)
 const SYNC_DELAY_MS = 1000; // after opening, returning to the app or the network coming back (design §9: ~1 s)
 const NEW_DAY_REFRESH_MS = 3000; // «Новый день» waits at most this long for state.json and inbox/
-const PC_QUIET_MS = 7 * 60 * 60 * 1000; // a running pc-sync refreshes lastSuccessAt at least every 6 h
-const MONTHS = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+// A send failure the sender simply retries on the next kick (gym without network, GitHub 5xx, rate limit, a sha race):
+// not worth the user's attention. "GitHub <code>: …" is how github.ts words every GitHubError.
+const RETRIED_CODES = new Set([408, 409, 429]);
 const INBOX_FILE = /^(\d{4}-\d{2}-\d{2})(?:--([A-Za-z0-9-]{1,64}))?\.json$/u;
 // A pasted key after whitespace is stripped: a zero-width space or a bidi mark passes \s, and the browser's fetch
 // would then throw a TypeError on the Authorization header (Task 17 review).
@@ -48,14 +52,12 @@ const PRINTABLE_ASCII = /^[\x21-\x7E]+$/u;
 
                                                                                      
 
-function pad2(value        )         {
-  return String(value).padStart(2, "0");
-}
-
-// «12 окт 18:40» in the phone's local time.
-function pcTime(iso        )         {
-  const d = new Date(iso);
-  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+function retried(reason        )          {
+  if (reason === NO_NETWORK) return true;
+  const match = /^GitHub (\d{3}):/u.exec(reason);
+  if (match === null) return false;
+  const code = Number(match[1]);
+  return code >= 500 || RETRIED_CODES.has(code);
 }
 
 function looksLikeState(value         )                 {
@@ -86,11 +88,13 @@ function inboxOrder(a        , b        )         {
 export function createController(deps                                                                                                                                                                                                                            )             {
   const data = deps.storage.load();
   if (data.repo === "") data.repo = DEFAULT_REPO;
+  if (typeof data.closedWorkoutId !== "string") data.closedWorkoutId = null;
   if (!looksLikeState(data.state)) data.state = null; // storage keeps state by schema only (Task 17): a malformed copy counts as never fetched
   let storageFailed = false; // the last save failed (quota, private mode): data lives in memory only
   let keyRejected = false; // GitHub refused the stored key; in memory only, rechecked after every restart
-  // Why the last send attempt failed (GitHub 5xx, a field that fails validation): shown while the current version is unsent.
-  // Cleared by the next saved/sent/key-invalid. No network is not a failure: the gym has none, «сохранено в телефоне» stays.
+  // Why the last send attempt failed (GitHub 5xx, a field that fails validation): shown while the current version is unsent,
+  // and only when retrying cannot fix it (see retried()).
+  // Cleared by the next saved/sent/key-invalid. No network is not a failure: the gym has none, so the status line stays hidden.
   let sendError                = null;
   let message                = null;
   let sendTimer          = null;
@@ -98,6 +102,7 @@ export function createController(deps                                           
   let refreshing                       = null;
   let historyOpen = false;
   let selectedHistoryFile                = null;
+  let reopenedId                = null; // in memory only: it only steers the screen motion; cleared by close and create
 
   const persist = ()       => {
     storageFailed = !deps.storage.save(data);
@@ -129,8 +134,9 @@ export function createController(deps                                           
     }),
   });
 
-  // The workout on screen: the latest one dated today or yesterday (a workout past midnight stays visible).
-  function current()                 {
+  // The newest workout dated today or yesterday (a workout past midnight stays visible), closed or not. The status
+  // line follows it, so a closed workout's problem (PC refused it, GitHub rejected it) stays visible on the home screen.
+  function latest()                 {
     const from = addDays(today(), -1);
     let best                 = null;
     for (const w of sound()) {
@@ -139,23 +145,29 @@ export function createController(deps                                           
     return best;
   }
 
+  // The workout on screen: latest() unless the user closed it with the back arrow. A closed workout also keeps an
+  // older one from taking its place: closing today's workout shows the home screen, not yesterday's.
+  function current()                 {
+    const best = latest();
+    return best !== null && best.id === data.closedWorkoutId ? null : best;
+  }
+
+  // The status line shows only what needs the user (Task 25): routine states — saved, sent, in Obsidian, the PC being
+  // quiet, a send that will be retried — are "" and the line is hidden. The sender's own state is unchanged.
   function statusFor(w                )         {
     if (storageFailed) return STORAGE_FAILED;
     if (keyRejected) return KEY_BROKEN;
     const state = data.state;
-    if (w === null) return state !== null && state.program !== null ? "" : NO_PROGRAM;
-    if (deliveryLabel(state, w) !== null) return IN_OBSIDIAN;
+    if (w === null) return state !== null && state.program !== null ? "" : NO_PROGRAM; // no workout at all
+    if (deliveryLabel(state, w) !== null) return ""; // in Obsidian: nothing left to do
     const sent = sentRev(w.id);
     const delivery = state !== null && Object.hasOwn(state.delivery, w.id) ? state.delivery[w.id] : null;
     if (delivery !== null && delivery.rev >= sent) {
       if (delivery.status === "conflict") return CONFLICT;
       if (delivery.status === "rejected" || delivery.status === "held") return `ПК не принял: ${delivery.reason ?? delivery.status}`;
     }
-    if (sent < w.rev) return sendError === null ? SAVED : `${NOT_SENT}${sendError}`;
-    if (state !== null && deps.now().getTime() - Date.parse(state.lastSuccessAt) > PC_QUIET_MS) {
-      return `ПК обновлял данные: ${pcTime(state.lastSuccessAt)}`;
-    }
-    return SENT;
+    if (sent < w.rev && sendError !== null && !retried(sendError)) return `${NOT_SENT}${sendError}`;
+    return "";
   }
 
   // design §10: the phone and Obsidian changed the same result differently; the note kept Obsidian's value and
@@ -312,7 +324,17 @@ export function createController(deps                                           
     }, SYNC_DELAY_MS);
   }
 
-  async function newDay(now      )                                                                   {
+  async function newDay(now      )                        {
+    // Today's workout is already on the phone: show it again at once (offline too). Nothing changes in it, so no send.
+    const date = localDateString(now);
+    const existing = sound().find((w) => w.date === date);
+    if (existing !== undefined) {
+      if (data.closedWorkoutId === existing.id) data.closedWorkoutId = null;
+      reopenedId = existing.id;
+      message = null;
+      persist();
+      return { kind: "opened", workout: existing };
+    }
     await withTimeout(refresh(), NEW_DAY_REFRESH_MS);
     const program = data.state?.program ?? null;
     if (program === null) {
@@ -321,7 +343,7 @@ export function createController(deps                                           
     }
     const outcome = planNewDay({
       program,
-      date: localDateString(now),
+      date,
       existingDates: existingDates(data.state, sound()),
       candidates: candidatesFor(data.state, sound()),
       id: deps.randomId(),
@@ -329,6 +351,8 @@ export function createController(deps                                           
     });
     if (outcome.kind === "created") {
       data.workouts.push(outcome.workout);
+      data.closedWorkoutId = null;
+      reopenedId = null;
       message = null;
       persist();
       scheduleSend();
@@ -336,6 +360,15 @@ export function createController(deps                                           
       message = outcome.message;
     }
     return outcome;
+  }
+
+  function closeWorkout()       {
+    const w = current();
+    if (w === null) return;
+    data.closedWorkoutId = w.id;
+    reopenedId = null;
+    message = null;
+    persist();
   }
 
   function setResult(number        , text        )       {
@@ -362,12 +395,14 @@ export function createController(deps                                           
       const history = [...(data.state?.notes ?? [])].sort((a, b) => b.date.localeCompare(a.date) || b.file.localeCompare(a.file));
       const selected = history.some((note) => note.file === selectedHistoryFile) ? selectedHistoryFile : null;
       // A message about the user's own action wins; otherwise the main screen tells which phone values were not applied.
-      return { screen, workout: w, status: statusFor(w), message: message ?? (screen === "main" ? droppedPhoneValues(w) : null), history, selectedHistoryFile: selected };
+      return { screen, workout: w, status: statusFor(latest()), message: message ?? (screen === "main" ? droppedPhoneValues(w) : null), history, selectedHistoryFile: selected,
+        reopened: w !== null && w.id === reopenedId };
     },
     setToken,
     refresh,
     newDay,
     setResult,
+    closeWorkout,
     openHistory: () => { historyOpen = true; selectedHistoryFile = null; },
     openHistoryNote: (file) => {
       if (historyOpen && data.state?.notes.some((note) => note.file === file)) selectedHistoryFile = file;

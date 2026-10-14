@@ -3,7 +3,7 @@
                                                  
                                                      
 
-                                                                                                                                                                                                               
+                                                                                                                                                                                                                                               
 
 export const STORAGE_KEY = "workout-tracker:v1";
 export const CORRUPT_KEY = "workout-tracker:v1:corrupt";
@@ -23,6 +23,7 @@ export function emptyLocal()            {
     state: null,
     stateFetchedAt: null,
     lastSentRev: {},
+    closedWorkoutId: null, // the workout the user closed with the back arrow: hidden on the main screen, still sent
   };
 }
 
@@ -77,6 +78,8 @@ function sanitize(raw         )                                      {
   } else if (raw.lastSentRev !== undefined) {
     lossy = true;
   }
+  if (typeof raw.closedWorkoutId === "string") data.closedWorkoutId = raw.closedWorkoutId; // an unknown id matches nothing: harmless
+  else if (raw.closedWorkoutId !== undefined && raw.closedWorkoutId !== null) lossy = true;
   return { data, lossy };
 }
 
