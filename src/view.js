@@ -229,11 +229,15 @@ function mainSheet(doc          , vm           , view         )              {
     }
   }
   const actions = el(doc, "div", "actions");
-  const newDay = button(doc, view, workout === null ? "button button-primary" : "button button-quiet", "Новый день", "Новый день…");
-  newDay.addEventListener("click", () => {
-    if (!view.handlers.busy) view.handlers.onNewDay();
-  });
-  actions.append(newDay, view.message);
+  // «Новый день» only on the home screen; an open workout is left with the back arrow.
+  if (workout === null) {
+    const newDay = button(doc, view, "button button-primary", "Новый день", "Новый день…");
+    newDay.addEventListener("click", () => {
+      if (!view.handlers.busy) view.handlers.onNewDay();
+    });
+    actions.append(newDay);
+  }
+  actions.append(view.message);
   content.append(actions);
   if (workout === null) content.append(el(doc, "p", "empty", "Сегодня тренировки ещё нет."));
   sheet.append(content);

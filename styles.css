@@ -305,11 +305,6 @@ body {
   color: var(--on-accent);
 }
 
-.button-quiet {
-  background: var(--surface);
-  color: var(--text);
-}
-
 .button:disabled,
 .icon:disabled {
   opacity: 0.55;
@@ -441,7 +436,6 @@ body {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .button-quiet:hover,
   .history-item:hover,
   .icon:hover {
     background-color: var(--surface-press);
