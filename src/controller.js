@@ -26,7 +26,8 @@ import { createSender, NO_NETWORK } from "./sender.js";
  
 
 // reopened: the workout on screen was brought back by «Новый день» (not created), so the screen slides it in without a cascade.
-                                                                                                                                                                                                               
+// todayStarted: a phone workout dated today exists (closed or not), so the home button reads «Сегодняшний день».
+                                                                                                                                                                                                                                      
 
 const KEY_BROKEN = "ключ не работает — тренировки только в телефоне";
 const CONFLICT = "конфликт: на эту дату уже есть заметка";
@@ -396,7 +397,7 @@ export function createController(deps                                           
       const selected = history.some((note) => note.file === selectedHistoryFile) ? selectedHistoryFile : null;
       // A message about the user's own action wins; otherwise the main screen tells which phone values were not applied.
       return { screen, workout: w, status: statusFor(latest()), message: message ?? (screen === "main" ? droppedPhoneValues(w) : null), history, selectedHistoryFile: selected,
-        reopened: w !== null && w.id === reopenedId };
+        reopened: w !== null && w.id === reopenedId, todayStarted: sound().some((x) => x.date === today()) };
     },
     setToken,
     refresh,

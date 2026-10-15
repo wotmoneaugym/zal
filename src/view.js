@@ -231,7 +231,8 @@ function mainSheet(doc          , vm           , view         )              {
   const actions = el(doc, "div", "actions");
   // «Новый день» only on the home screen; an open workout is left with the back arrow.
   if (workout === null) {
-    const newDay = button(doc, view, "button button-primary", "Новый день", "Новый день…");
+    const label = vm.todayStarted ? "Сегодняшний день" : "Новый день";
+    const newDay = button(doc, view, "button button-primary", label, label + "…");
     newDay.addEventListener("click", () => {
       if (!view.handlers.busy) view.handlers.onNewDay();
     });
@@ -239,7 +240,7 @@ function mainSheet(doc          , vm           , view         )              {
   }
   actions.append(view.message);
   content.append(actions);
-  if (workout === null) content.append(el(doc, "p", "empty", "Сегодня тренировки ещё нет."));
+  if (workout === null && !vm.todayStarted) content.append(el(doc, "p", "empty", "Сегодня тренировки ещё нет."));
   sheet.append(content);
   return sheet;
 }
